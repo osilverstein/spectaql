@@ -1,3 +1,5 @@
+const { readFileSync } = require('fs');
+
 const isEmpty = require('lodash/isEmpty')
 
 const {
@@ -35,7 +37,9 @@ const introspectionResponseFromSchema = ({ schema }) => {
 const loadSchemaFromSDLFile = ({
   pathToFile
 } = {}) => {
-  return buildSchema(readTextFile(pathToFile))
+  let schemaText = "";
+  schemaText = readFileSync(pathToFile, { encoding: "utf8"}).split("extend ").pop().slice(0, -2);
+  return buildSchema(schemaText)
 }
 
 const loadIntrospectionResponseFromFile = ({

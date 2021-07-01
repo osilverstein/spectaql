@@ -196,7 +196,29 @@ function digNonNullType(schema) {
   return getNonNullType(schema)
 }
 
-function getTypeFromIntrospectionResponse ({
+//return a tuple of (boolean isDeprecated, reason whyDeprecated)
+function getDeprecateFromIntrospectionResponse({
+  name,
+  propertyName,
+  introspectionResponse,
+} = {}) {
+  const types = introspectionResponse.__schema.types;
+  for (var i = 0; i < types.length; i++) {
+    if (types[i].name == name ) {
+      const fields = types[i].fields;
+      if (fields == null) {
+        continue;
+      }
+      for (var j = 0; j < fields.length; j++) {
+        if (fields[j].name == propertyName && fields[j].isDeprecated) {
+          return [true, fields[j].deprecationReason]
+        }
+      }
+    }
+  }
+  return [false, "not deprecated"]
+}
+function getTypeFromIntrospectionResponse({
   name,
   kind,
   kinds = ['OBJECT', 'SCALAR', 'ENUM', 'INPUT_OBJECT'],
@@ -243,7 +265,7 @@ function getTypeNameFromJsonSchemaArgDefinition (argDefinition = {}) {
 function getReturnTypeNameFromJsonSchemaReturnSchema(schema = {}) {
   const $ref = (digNonNullType(schema)).$ref
   if (!($ref && $ref.startsWith('#/definitions/'))) {
-  return
+    return
   }
 
   return $ref.replace('#/definitions/', '')
@@ -281,30 +303,30 @@ function _analyzeJsonSchemaDefinition (definition = {}) {
 // Handles some weirdness from HACK HACK stuff
 function analyzeTypeSchema (thing) {
   const {
-  name,
-  schema,
-  parent,
+    name,
+    schema,
+    parent,
   } = thing
 
   let isRequired = false
   let getTypesFrom
 
   if (schema) {
-  // This comes from composePaths -> convertTypeToSchema call?
+    // This comes from composePaths -> convertTypeToSchema call?
 
-  // It is a query/mutation path...this is how we do it:
-  getTypesFrom = schema
+    // It is a query/mutation path...this is how we do it:
+    getTypesFrom = schema
 
-  // This comes from HACK HACK in type-helpers convertGraphQLType
-  isRequired = schema.required
+    // This comes from HACK HACK in type-helpers convertGraphQLType
+    isRequired = schema.required
   } else {
-  // It is a Type...this is how we do it:
-  getTypesFrom = thing
+    // It is a Type...this is how we do it:
+    getTypesFrom = thing
 
-  // parent should have been added to the current context in the right place
-  if (_.get(parent, 'required', []).includes(name)) {
-     isRequired = true
-  }
+    // parent should have been added to the current context in the right place
+    if (_.get(parent, 'required', []).includes(name)) {
+      isRequired = true
+    }
   }
 
   const isArray = typeIsArray(getTypesFrom)
@@ -339,4 +361,5 @@ module.exports = {
   analayzeJsonSchemaFieldDefinition,
   analyzeJsonSchemaArgDefinition,
   analyzeTypeSchema,
+  getDeprecateFromIntrospectionResponse,
 }

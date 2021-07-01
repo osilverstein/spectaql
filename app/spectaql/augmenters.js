@@ -7,6 +7,7 @@ const {
   returnTypeExistsForJsonSchemaField,
   analayzeJsonSchemaFieldDefinition,
   analyzeJsonSchemaArgDefinition,
+  getDeprecateFromIntrospectionResponse,
 } = require('./type-helpers')
 
 const {
@@ -19,7 +20,7 @@ const calculateShouldDocument = ({ undocumented, documented, def }) => {
   return undocumented !== true && (documented === true || def === true)
 }
 
-function augmentData (args) {
+function augmentData(args) {
   hideThingsBasedOnMetadata(args)
   addExamplesFromMetadata(args)
   addExamplesDynamically(args)
@@ -27,7 +28,39 @@ function augmentData (args) {
 
 // At this point, the metadata should have been added into the JSON Schema data, so everything
 // we need is already there
-function addExamplesFromMetadata (args = {}) {
+
+function objectMap(object, mapFn) {
+  return Object.keys(object).reduce(function(result, key) {
+    result[key] = mapFn(object[key], key)
+    return result
+  }, {})
+}
+
+function addDeprecation({
+  introspectionResponse,
+  jsonSchema,
+}) {
+  return {
+    ...jsonSchema, 
+    definitions: Object.entries(jsonSchema.definitions).reduce((acc, [name, definition]) => {
+      if(definition.properties != null) {
+        const newProperties = objectMap(definition.properties, (originalProperty, propertyName) => {
+          //input: name, property name, introspectionResponse    output: (isDeprecated, deprecationReason)
+          const [isDeprecated, deprecationReason] = getDeprecateFromIntrospectionResponse({name, propertyName, introspectionResponse});
+          return {
+            ...originalProperty,
+            isDeprecated,
+            deprecationReason,
+          }
+        });
+        return { ...acc, [name]: { ...definition, properties: newProperties } }
+      }
+      return { ...acc, [name]: { definition} }
+    }, {})
+  }
+}
+
+function addExamplesFromMetadata(args = {}) {
   return _addExamplesToThings({
     ...args,
     fn: ({
@@ -59,7 +92,7 @@ function addExamplesFromMetadata (args = {}) {
   })
 }
 
-function addExamplesDynamically (args = {}) {
+function addExamplesDynamically(args = {}) {
   const dynamicExamplesProcessingModule = _.get(args, 'introspectionOptions.dynamicExamplesProcessingModule')
 
   if (!dynamicExamplesProcessingModule) {
@@ -70,7 +103,7 @@ function addExamplesDynamically (args = {}) {
   let processingModule
   try {
     processingModule = require(dynamicExamplesProcessingModule)
-  } catch(e) {
+  } catch (e) {
     if (e instanceof Error && e.code === 'MODULE_NOT_FOUND') {
       console.warn('\n\n\nCOULD NOT LOAD EXAMPLE PROCESSOR\n\n\n')
       return args
@@ -91,10 +124,10 @@ function addExamplesDynamically (args = {}) {
     return args
   }
 
-  fieldProcessor = fieldProcessor || (() => {})
-  argumentProcessor = argumentProcessor || (() => {})
+  fieldProcessor = fieldProcessor || (() => { })
+  argumentProcessor = argumentProcessor || (() => { })
 
-  function massageExample ({
+  function massageExample({
     value,
     typeName,
   }) {
@@ -365,24 +398,24 @@ function hideTypes ({
 
   jsonSchema.definitions =
     !typesDocumented ?
-    {} :
-    Object.entries(jsonSchema.definitions).reduce(
-      (acc, [name, definition]) => {
-        const type = getTypeFromIntrospectionResponse({name, introspectionResponse})
-        const metadata = _.get(type, metadatasPath, {})
-        const shouldDocument = !!definition && calculateShouldDocument({ ...metadata, def: documentedDefault })
+      {} :
+      Object.entries(jsonSchema.definitions).reduce(
+        (acc, [name, definition]) => {
+          const type = getTypeFromIntrospectionResponse({name, introspectionResponse})
+          const metadata = _.get(type, metadatasPath, {})
+          const shouldDocument = !!definition && calculateShouldDocument({ ...metadata, def: documentedDefault })
 
-        if (shouldDocument) {
-          acc[name] = definition
-          if (!_.isEmpty(metadata)) {
-            _.set(definition, METADATA_OUTPUT_PATH, metadata)
+          if (shouldDocument) {
+            acc[name] = definition
+            if (!_.isEmpty(metadata)) {
+              _.set(definition, METADATA_OUTPUT_PATH, metadata)
+            }
           }
-        }
 
-        return acc
-      },
-      {}
-    )
+          return acc
+        },
+        {}
+      )
 
   return
 }
@@ -428,7 +461,7 @@ function hideFields(args = {}) {
       typeDefinition,
       defaultShowHide,
       // things,
-     typeOfThing, // "Type" | "Query" | "Mutation"
+      typeOfThing, // "Type" | "Query" | "Mutation"
     }) => {
       typeDefinition.properties = Object.entries(typeDefinition.properties).reduce(
         (acc, [fieldName, fieldDefinition]) => {
@@ -459,7 +492,7 @@ function hideFields(args = {}) {
         {}
       )
     },
-   })
+  })
 
   return
 }
@@ -541,41 +574,41 @@ function _goThroughThings ({
   const queryTypeName = (graphQLSchema.getQueryType() || {}).name
   const mutationTypeName = (graphQLSchema.getMutationType() || {}).name
 
-  ;[
-    [
-      // An object containing only the Query type
-      _.pick(jsonSchema.properties, queryTypeName),
-      queryDefault,
-      'Query',
-    ],
-    [
-      // An object containing only the Mutation type
-      _.pick(jsonSchema.properties, mutationTypeName),
-      mutationDefault,
-      'Mutation',
-    ],
-    [
-      // All the other types
-      jsonSchema.definitions,
-      typeDefault,
-      'Type'
-    ]
-  ].forEach(([things, defaultShowHide, typeOfThing]) => {
-    Object.entries(things).forEach(([typeName, typeDefinition]) => {
-      // If it has no "properties" property, then it's a scalar or something
-      if (!Object.hasOwnProperty.call(typeDefinition, 'properties')) {
-        return
-      }
+    ;[
+      [
+        // An object containing only the Query type
+        _.pick(jsonSchema.properties, queryTypeName),
+        queryDefault,
+        'Query',
+      ],
+      [
+        // An object containing only the Mutation type
+        _.pick(jsonSchema.properties, mutationTypeName),
+        mutationDefault,
+        'Mutation',
+      ],
+      [
+        // All the other types
+        jsonSchema.definitions,
+        typeDefault,
+        'Type'
+      ]
+    ].forEach(([things, defaultShowHide, typeOfThing]) => {
+      Object.entries(things).forEach(([typeName, typeDefinition]) => {
+        // If it has no "properties" property, then it's a scalar or something
+        if (!Object.hasOwnProperty.call(typeDefinition, 'properties')) {
+          return
+        }
 
-      fn({
-        typeName,
-        typeDefinition,
-        defaultShowHide,
-        things,
-        typeOfThing,
+        fn({
+          typeName,
+          typeDefinition,
+          defaultShowHide,
+          things,
+          typeOfThing,
+        })
       })
     })
-  })
 }
 
 module.exports = {
@@ -584,4 +617,5 @@ module.exports = {
   addExamplesDynamically,
   calculateShouldDocument,
   augmentData,
+  addDeprecation,
 }

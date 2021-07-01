@@ -15,6 +15,7 @@ const {
 
 const {
   augmentData,
+  addDeprecation,
 } = require('./augmenters')
 
 const composePaths = require('./compose-paths')
@@ -105,7 +106,7 @@ module.exports = function(opts) {
     throw new Error('Problem with Introspection Query Response')
   }
 
-  const jsonSchema = jsonSchemaFromIntrospectionResponse(introspectionResponse)
+  let jsonSchema = jsonSchemaFromIntrospectionResponse(introspectionResponse)
   const graphQLSchema = graphQLSchemaFromIntrospectionResponse(introspectionResponse)
 
   augmentData({
@@ -114,6 +115,7 @@ module.exports = function(opts) {
     graphQLSchema,
     introspectionOptions,
   })
+  jsonSchema = addDeprecation({introspectionResponse, jsonSchema});
 
   // Find the 1 marked Production. Or take the first one if there are any. Or use
   // the URL provided
